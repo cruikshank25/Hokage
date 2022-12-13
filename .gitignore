@@ -1,5 +1,3 @@
 # ignore tests dir
 tests/
 
-# ignore gitignore
-.gitignore

@@ -7,58 +7,70 @@ import openai
 import speech_recognition as sr
 import pyttsx3
 
-# get openai key from environment variables
-openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-# initialise speech recogniser
-r = sr.Recognizer()
-
-# function to convert text to speech
 def SpeakText(command):
     engine = pyttsx3.init()
     engine.say(command)
     engine.runAndWait()
 
-# function to take user speech input and return string
-def defineSpeechPrompt():
 
-    global myPrompt
+def defineSpeechPrompt(myPrompt, recorder):
+
     myPrompt = 0
     while myPrompt == 0:
         try:
             with sr.Microphone() as source:
-                r.adjust_for_ambient_noise(source, duration=0.2)
-                promptAudio = r.listen(source)
-                myPrompt = r.recognize_google(promptAudio)
+                recorder.adjust_for_ambient_noise(source, duration=0.2)
+                promptAudio = recorder.listen(source)
+                myPrompt = recorder.recognize_google(promptAudio)
                 myPrompt = myPrompt.lower()
+
+                '''
+                OPTIONAL CONFIRMATION BLOCK
+                UNCOMMENT THIS SECTION TO GIVE A CONFIRMATION BEFORE REQUESTING A COMPLETION
+
                 print("did you say ",myPrompt)
                 SpeakText("did you say")
                 SpeakText("please answer yes or no")
                 SpeakText(myPrompt)
-                confirmationAudio = r.listen(source)
-                myConfirmation = r.recognize_google(confirmationAudio)
+                confirmationAudio = recorder.listen(source)
+                myConfirmation = recorder.recognize_google(confirmationAudio)
                 myConfirmation = myConfirmation.lower()
                 if myConfirmation == "yes":
                     SpeakText("thank you for confirming, give me a moment to answer your question")
                     return myPrompt
                 elif myConfirmation == "no":
                     SpeakText("sorry I did not understand, can you please try again")
-                    defineSpeechPrompt()
+                    defineSpeechPrompt(recorder)
+                '''
                 
         except sr.RequestError as e:
             print("Could not request results; {0}".format(e))
-            
+
         except sr.UnknownValueError:
             print("unknown error occurred")
 
-SpeakText("Good Day, I am the Hokage, please ask me anything")
-defineSpeechPrompt()
+    return myPrompt
 
-# create a completion 
-completion = openai.Completion.create(engine="text-davinci-003", prompt=myPrompt, max_tokens=32)
 
-# print the completion
-print(completion.choices[0].text)
+def requestCompletion(recorder): 
+    # create a completion and speak the result 
+    
+    myPrompt = 0
+    promptText = defineSpeechPrompt(myPrompt, recorder)
+    print(promptText)
+    completion = openai.Completion.create(engine="text-davinci-003", prompt=promptText, max_tokens=64)
+    print(completion.choices[0].text)
+    SpeakText(completion.choices[0].text)
+    SpeakText("use this knowledge from the hokage of leaf village wisely")
 
-# speak the completion
-SpeakText(completion.choices[0].text)
+def main():
+
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
+    recorder = sr.Recognizer()
+
+    SpeakText("Greetings from leaf village, I am the Hokage, please ask me anything")
+    requestCompletion(recorder)
+
+
+main()
