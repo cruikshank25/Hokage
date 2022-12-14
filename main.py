@@ -1,76 +1,111 @@
 # Author: Sean Cruikshank
-# built using OpenAI API docs 
-# and https://www.geeksforgeeks.org/python-convert-speech-to-text-and-text-to-speech/
+
+# Code References:
+# OpenAI API documention - https://beta.openai.com/docs/introduction
+# Text to Speech coverter blog - https://www.geeksforgeeks.org/python-convert-speech-to-text-and-text-to-speech/
+
+
+#TODO: research how to make conversation more natural (request ChatGPT to respond with a question)
+#TODO: different modes? conversation mode, question answer mode, ask a random question etc
+#TODO: split code into smaller functions for maintainibility
+#TODO: clean up print statements
+#TODO: ChatGPT model config option
+
 
 import os 
 import openai
 import speech_recognition as sr
 import pyttsx3
+import config
+import logging
 
 
-def SpeakText(command):
+def speak_text(command):
     engine = pyttsx3.init()
+    voices = engine.getProperty('voices')
+    engine.setProperty('voice', voices[config.voice].id)
     engine.say(command)
     engine.runAndWait()
 
 
-def defineSpeechPrompt(myPrompt, recorder):
+def define_speech_prompt(user_prompt, user_recorder):
 
-    myPrompt = 0
-    while myPrompt == 0:
-        try:
-            with sr.Microphone() as source:
-                recorder.adjust_for_ambient_noise(source, duration=0.2)
-                promptAudio = recorder.listen(source)
-                myPrompt = recorder.recognize_google(promptAudio)
-                myPrompt = myPrompt.lower()
+    try:
+        with sr.Microphone() as source:
+            user_recorder.adjust_for_ambient_noise(source, duration=0.2)
+            prompt_audio = user_recorder.listen(source)
+            user_prompt = user_recorder.recognize_google(prompt_audio)
+            user_prompt = user_prompt.lower()
 
-                '''
-                OPTIONAL CONFIRMATION BLOCK
-                UNCOMMENT THIS SECTION TO GIVE A CONFIRMATION BEFORE REQUESTING A COMPLETION
+    except sr.RequestError as e:
+        print("Could not request results; {0}".format(e))
+        logger.error("Could not request results; {0}".format(e))
 
-                print("did you say ",myPrompt)
-                SpeakText("did you say")
-                SpeakText("please answer yes or no")
-                SpeakText(myPrompt)
-                confirmationAudio = recorder.listen(source)
-                myConfirmation = recorder.recognize_google(confirmationAudio)
-                myConfirmation = myConfirmation.lower()
-                if myConfirmation == "yes":
-                    SpeakText("thank you for confirming, give me a moment to answer your question")
-                    return myPrompt
-                elif myConfirmation == "no":
-                    SpeakText("sorry I did not understand, can you please try again")
-                    defineSpeechPrompt(recorder)
-                '''
-                
-        except sr.RequestError as e:
-            print("Could not request results; {0}".format(e))
+    except sr.UnknownValueError:
+        print("unknown value occured in recording")
+        logger.error("unknown value occured in recording")
 
-        except sr.UnknownValueError:
-            print("unknown error occurred")
-
-    return myPrompt
+    return user_prompt
 
 
-def requestCompletion(recorder): 
-    # create a completion and speak the result 
+def request_completion(user_recorder): 
+
+
+    while True:
+        
+        user_prompt = 0
+        prompt_text = define_speech_prompt(user_prompt, user_recorder)
+        print(prompt_text)
+        logger.info("prompt text provided: " + prompt_text)
+        
+        if prompt_text == "stop":
+            logger.info("user 'stop' command recorded")
+            break
+        
+        elif prompt_text != "stop":
+            max_tokens_setting = config.max_tokens
+            completion = openai.Completion.create(
+                engine="text-davinci-003",
+                prompt=prompt_text,
+                max_tokens=max_tokens_setting)
+            print(completion.choices[0].text)
+            logger.info("ChatGPT API responded with the following completion: " + completion.choices[0].text)
+            speak_text(completion.choices[0].text)
+            continue
+        
+        else:
+            print("something went wrong") 
+
+
     
-    myPrompt = 0
-    promptText = defineSpeechPrompt(myPrompt, recorder)
-    print(promptText)
-    completion = openai.Completion.create(engine="text-davinci-003", prompt=promptText, max_tokens=64)
-    print(completion.choices[0].text)
-    SpeakText(completion.choices[0].text)
-    SpeakText("use this knowledge from the hokage of leaf village wisely")
 
 def main():
 
+    # retrieve api key from OS environment variables
     openai.api_key = os.environ.get("OPENAI_API_KEY")
-    recorder = sr.Recognizer()
+    
+    # define speech recorder
+    user_recorder = sr.Recognizer()
+    
+    # create a logger and make it global
+    global logger
+    logger = logging.getLogger("my_logger")
+    # set the log level (from the config file)
+    logging_level = config.logging_level
+    logger.setLevel(logging_level)
+    # create a file handler
+    file_handler = logging.FileHandler("hokage_log.txt")
+    # create a formatter and set it for the file handler
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    # add the file handler to the logger
+    logger.addHandler(file_handler)
 
-    SpeakText("Greetings from leaf village, I am the Hokage, please ask me anything")
-    requestCompletion(recorder)
+    # greeting + pass to user input function
+    #speak_text("Greetings from Leaf village, I am soo nah dae, the fifth hoe kag ae, please ask me anything.")
+    speak_text("Greetings from Leaf village, I am the Hokage, please ask me anything.")
+    request_completion(user_recorder)
+        
 
-
-main()
+if __name__ == "__main__":
+    main()
