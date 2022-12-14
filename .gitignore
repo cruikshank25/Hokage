@@ -3,3 +3,6 @@ tests/
 
 # ignore log
 hokage_log.txt
+
+# ignore pychache
+__pycache__/
