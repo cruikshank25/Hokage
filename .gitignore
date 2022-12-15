@@ -6,3 +6,6 @@ hokage_log.txt
 
 # ignore pycache
 __pycache__/
+
+# ignore vscode dir
+.vscode
