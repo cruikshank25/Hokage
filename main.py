@@ -23,6 +23,7 @@ import pyttsx3
 import config
 import time
 import sys
+import multiprocessing as mp
 
 
 def speak_text(command):
@@ -33,94 +34,123 @@ def speak_text(command):
     engine.runAndWait()
 
 
-def define_speech_prompt(user_prompt, user_recorder):
-    try:
+def listen_for_stop(user_recorder, logger):
+    while True:
+
         with sr.Microphone() as source:
             user_recorder.adjust_for_ambient_noise(source, duration=0.2)
-            prompt_audio = user_recorder.listen(source)
-            start_time = time.time()
-            user_prompt = user_recorder.recognize_google(prompt_audio)
-            print("--- %s seconds ---" % (time.time() - start_time))
-            logger.info("call to Google took: %s seconds " % (time.time() - start_time))
-            user_prompt = user_prompt.lower()
-            user_prompt = str(user_prompt)
-            print("define prompt creates: " + user_prompt)
+            audio = user_recorder.listen(source)
+            
+            try:
+                start_time = time.time()
+                speech_text = user_recorder.recognize_google(audio)
+                print(f"listen_for_stop input: {speech_text}")
+                logger.info("call to Google took: %s seconds " % (time.time() - start_time))
+                print(f"request_completion input: {speech_text}")
 
-    except sr.RequestError as e:
-        print("Could not request results; {0}".format(e))
-        logger.error("Could not request results; {0}".format(e))
+                if speech_text == "stop":
+                    logger.info("user 'stop' command recorded")
+                    print("stopping from 'listen_for_stop'")
+                    sys.exit()
 
-    except sr.UnknownValueError:
-        print("unknown value occured in recording")
-        logger.error("unknown value occured in recording")
-        #define_speech_prompt(user_prompt, user_recorder)
-        request_completion(user_recorder)
+                elif speech_text != "stop":
+                    continue
 
-    print("before return: " + str(user_prompt) )
-    return user_prompt
+            except sr.UnknownValueError:
+                print("Could not understand speech input 'listen_for_stop'")
+            
+            except sr.RequestError as e:
+                print(f"Error while processing speech input 'listen_for_stop' : {e}")
+
+            except SystemExit:
+                print("sys.exit() worked as expected")
+                sys.exit(1)
+
+            except:
+                print("something unknown occured")
+                sys.exit(1)
 
 
-def request_completion(user_recorder): 
+def request_completion(user_recorder, logger): 
     while True:
-        
-        user_prompt = 0
-        prompt_text = define_speech_prompt(user_prompt, user_recorder)
-        prompt_text = str(prompt_text)
-        print("completion receives: " + prompt_text)
-        logger.info("prompt text provided: " + prompt_text)
-        
-        if prompt_text == "stop":
-            logger.info("user 'stop' command recorded")
-            print("stopping from local")
-            sys.exit()
-        
-        elif prompt_text == "0":
-            print("an invalid numeric string was supplied, try again")
-            logger.info("an invalid numeric string was supplied, try again")
-            #speak_text("an invalid value was detected please try again")
-            request_completion(user_recorder)
 
-        elif prompt_text != "stop":
-            max_tokens_setting = config.max_tokens
-            completion = openai.Completion.create(
+        with sr.Microphone() as source:
+            user_recorder.adjust_for_ambient_noise(source, duration=0.2)
+            audio = user_recorder.listen(source)
+
+            try:
+                #TODO: needs more error handling
+                start_time = time.time()
+                speech_text = user_recorder.recognize_google(audio)
+                print("--- %s seconds ---" % (time.time() - start_time))
+                logger.info("call to Google took: %s seconds " % (time.time() - start_time))
+                print(f"request_completion input: {speech_text}")
+                prompt_text = str(speech_text.lower())
+                print("completion receives: " + prompt_text)
+                logger.info("prompt text provided: " + prompt_text)
+                max_tokens_setting = config.max_tokens
+                completion = openai.Completion.create(
                 engine="text-davinci-003",
                 prompt=prompt_text,
                 max_tokens=max_tokens_setting)
-            print(completion.choices[0].text)
-            logger.info("ChatGPT responded with the following completion: " + completion.choices[0].text)
-            speak_text(completion.choices[0].text)
-            continue
-        
-        else:
-            print("something went wrong") 
+                print(completion.choices[0].text)
+                logger.info("ChatGPT responded with the following completion: " + completion.choices[0].text)
+                speak_text(completion.choices[0].text)
+                
+            except sr.UnknownValueError:
+                print("Could not understand speech input 'request_completion'")
+                logger.error("unknown value occured in recording input for 'request_completion'")
+
+            except sr.RequestError as e:
+                print(f"Error while processing speech input 'request_completion' : {e}")
+                logger.error("Could not request results for input ''request_completion''; {0}".format(e))
 
 
 def main():
-
     # create a logger and make it global
-    global logger
     logger = logging.getLogger("my_logger")
+
     # set the log level (from the config file)
     logging_level = config.logging_level
     logger.setLevel(logging_level)
+
     # create a file handler
     file_handler = logging.FileHandler("hokage_log.txt")
+
     # create a formatter and set it for the file handler
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
+
     # add the file handler to the logger
     logger.addHandler(file_handler)
 
     # retrieve api key from OS environment variables
     openai.api_key = os.environ.get("OPENAI_API_KEY")
-    
+
     # define speech recorder
     user_recorder = sr.Recognizer()
 
     # greeting + pass to user input function
     #speak_text("Greetings from Leaf village, I am soo nah dae, the fifth hoe kag ae, please ask me anything.")
     speak_text("Greetings from Leaf village, I am the Hokage, please ask me anything.")
-    request_completion(user_recorder)
+
+    # create a process for each speech recognition task
+    process1 = mp.Process(target=listen_for_stop, args=(user_recorder, logger))
+    process2 = mp.Process(target=request_completion, args=(user_recorder, logger))
+
+    # start the processes
+    process1.start()
+    process2.start()
+
+    # cleanup and kill program if 'stop' process finishes. 
+    process1.join()
+    print("process1 has terminated")
+
+    if process1.is_alive() is False:
+        process2.terminate()
+
+    process2.join()
+    print("process2 has terminated")
 
 
 if __name__ == "__main__":
