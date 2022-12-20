@@ -8,12 +8,11 @@
 #TODO: research how to make conversation more natural (request ChatGPT to respond with a question)
 #TODO: different modes? conversation mode, question answer mode, ask a random question etc
 #TODO: split code into smaller functions for maintainibility
-#TODO: clean up print statements
-#TODO: ChatGPT model config option
-#TODO: error handling for unrecognised recording input
-#TODO: error handling for bad responses from chatGPT 
-#TODO: listen for stops when speaking response (needs to be interuptable) 
+#TODO: OpenAI model config option
 #TODO: nonsense responses? Check OpenAI API docs
+#TODO: investigate WhisperAI for speech to text translation (rather than Google)
+#TODO: add a requirements.txt file
+#TODO: Kivy for mobile app development? 
 
 import logging
 import os
@@ -79,24 +78,40 @@ def request_completion(user_recorder, logger):
             audio = user_recorder.listen(source)
 
             try:
-                #TODO: needs more error handling
-                start_time = time.time()
-                speech_text = user_recorder.recognize_google(audio)
-                print("--- %s seconds ---" % (time.time() - start_time))
-                logger.info("call to Google took: %s seconds " % (time.time() - start_time))
-                print(f"request_completion input: {speech_text}")
-                prompt_text = str(speech_text.lower())
-                print("completion receives: " + prompt_text)
-                logger.info("prompt text provided: " + prompt_text)
-                max_tokens_setting = config.max_tokens
-                completion = openai.Completion.create(
-                engine="text-davinci-003",
-                prompt=prompt_text,
-                max_tokens=max_tokens_setting)
-                print(completion.choices[0].text)
-                logger.info("ChatGPT responded with the following completion: " + completion.choices[0].text)
-                speak_text(completion.choices[0].text)
-                
+                try: 
+                    start_time = time.time()
+                    speech_text = user_recorder.recognize_google(audio)
+                    print("call to Google took: %s seconds " % (time.time() - start_time))
+                    logger.info("call to Google took: %s seconds " % (time.time() - start_time))
+                    print(f"request_completion input: {speech_text}")
+                    prompt_text = str(speech_text.lower())
+
+                except Exception as e:
+                    print("call to google cloud speech to text failed with following exception: "  + e)
+                    logger.error("call to google cloud speech to text failed with following exception: "  + e)
+
+                try:
+                    print("completion receives: " + prompt_text)
+                    logger.info("prompt text provided: " + prompt_text)
+                    
+                    max_tokens_setting = config.max_tokens
+                    model_setting = config.model
+                    temperature_setting = config.temperature
+
+                    completion = openai.Completion.create(
+                    engine=model_setting,
+                    prompt=prompt_text,
+                    max_tokens=max_tokens_setting,
+                    temperature=temperature_setting
+                    )
+                    print(completion.choices[0].text)
+                    logger.info("ChatGPT responded with the following completion: " + completion.choices[0].text)
+                    speak_text(completion.choices[0].text)
+
+                except openai.APIError as e:
+                    print("OpenAI API failed to process completion with the following exception: " + e)
+                    logger.error("OpenAI API failed to process completion with the following exception: " + e)
+
             except sr.UnknownValueError:
                 print("Could not understand speech input 'request_completion'")
                 logger.error("unknown value occured in recording input for 'request_completion'")
